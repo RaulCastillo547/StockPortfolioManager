@@ -1,17 +1,10 @@
 from datetime import datetime
 from datetime import time
 from datetime import timedelta
-import json
 import os
-from urllib import request
+import requests
 
 import pandas as pd
-import matplotlib
-
-def pause(seconds):
-    tmp = datetime.now()
-    while (datetime.now() - tmp).total_seconds() <= seconds:
-        pass
 
 def pause(seconds):
     tmp = datetime.now()
@@ -79,10 +72,11 @@ class PortfolioMaster():
         index_removeable = []
 
         for index in hold_df.index:
+            print(f'Row: {index}; Stock: {hold_df["Stock"][index]}; Minute Calls: {self.count_minute_calls()}')
+
             if (self.count_total_daily_calls()) > 500:
                 print('Exceeded API Cap of 500 Calls per Day')
                 break
-
             if (index + 1 + self.count_minute_calls()) % 5 == 0:
                 print('Program Paused')
                 pause(65)
@@ -95,10 +89,10 @@ class PortfolioMaster():
 
             # Extract data from JSON with current stock information
             url_link = (r"https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol={}&interval=15min&apikey={}".format(stock, self.api_key))
-            url_data = request.urlopen(url_link)
-            raw_data = url_data.read()
-            json_data = json.loads(raw_data)
-            
+            print(url_link)
+            url_data = requests.get(url_link)
+            json_data = url_data.json()
+
             # Parsing through date data from JSON and associated price per share data
             dates = pd.DataFrame(json_data['Time Series (15min)']).transpose().reset_index()
             dates = pd.to_datetime(dates['index']).dt.date
@@ -162,7 +156,7 @@ class PortfolioMaster():
                     'Current Profit/Loss': [], 'Last Updated': []}
 
         for index, group in enumerate(post_dfgb.groups):
-            if (self.count_total_daily_calls()) >= 900:
+            if (self.count_total_daily_calls()) >= 500:
                 print('Exceeded API Cap of 500 Calls per Day')
                 break
             
@@ -184,9 +178,8 @@ class PortfolioMaster():
 
             # Extract data from JSON with current stock information
             url_link = (r"https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol={}&interval=15min&apikey={}".format(group, self.api_key))
-            url_data = request.urlopen(url_link)
-            raw_data = url_data.read()
-            json_data = json.loads(raw_data)
+            url_data = requests.get(url_link)
+            json_data = url_data.json()
             
             current = datetime.now() - timedelta(days=1)
 
@@ -209,6 +202,7 @@ class PortfolioMaster():
             
             current_worth = (price_per_share)*df_stock['Quantity Moved'].astype(float).sum()
             profit_loss = (price_per_share)*df_stock['Quantity Moved'].astype(float).sum() - df_stock['Amount Moved'].astype(float).sum()
+            profit_loss = float(('{:.2f}').format(profit_loss))*-1
 
             # Read overview csv
             tmp_overview_df = pd.read_csv(self.overview_url)
@@ -314,13 +308,19 @@ class PortfolioMaster():
 if __name__ == '__main__':
     portfolio = PortfolioMaster('Stock Market')
     
-    portfolio.add_remove_cash(5000)
+    # portfolio.add_remove_cash(5000)
 
-    portfolio.call_order('IBM', 3)
-    portfolio.call_order('APPL', 5)
-    portfolio.call_order('GOOGL', 2)
+    # portfolio.call_order('IBM', 3)
+    # portfolio.call_order('APPL', 5)
+    # portfolio.call_order('GOOGL', 2)
+    # portfolio.call_order('IBM', 3)
+    # portfolio.call_order('APPL', 5)
+    # portfolio.call_order('GOOGL', 2)
+    # portfolio.call_order('IBM', 3)
+    # portfolio.call_order('APPL', 5)
+    # portfolio.call_order('GOOGL', 2)
 
-    portfolio.load_orders()
+    # portfolio.load_orders()
 
     portfolio.update()
 
