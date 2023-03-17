@@ -308,20 +308,18 @@ class PortfolioMaster():
 if __name__ == '__main__':
     portfolio = PortfolioMaster('Stock Market')
     
-    # portfolio.add_remove_cash(5000)
+    portfolio.add_remove_cash(5000)
 
-    # portfolio.call_order('IBM', 3)
-    # portfolio.call_order('APPL', 5)
-    # portfolio.call_order('GOOGL', 2)
-    # portfolio.call_order('IBM', 3)
-    # portfolio.call_order('APPL', 5)
-    # portfolio.call_order('GOOGL', 2)
-    # portfolio.call_order('IBM', 3)
-    # portfolio.call_order('APPL', 5)
-    # portfolio.call_order('GOOGL', 2)
+    portfolio.call_order('IBM', 3)
+    portfolio.call_order('AAPL', 5)
+    portfolio.call_order('GOOGL', 2)
+    portfolio.call_order('IBM', 3)
+    portfolio.call_order('AAPL', 5)
+    portfolio.call_order('GOOGL', 2)
+    portfolio.call_order('IBM', 3)
+    portfolio.call_order('AAPL', 5)
+    portfolio.call_order('GOOGL', 2)
 
-    # portfolio.load_orders()
-
+    portfolio.load_orders()
     portfolio.update()
-
     portfolio.overview_table()
