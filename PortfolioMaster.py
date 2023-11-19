@@ -3,6 +3,7 @@ from datetime import time
 from datetime import timedelta
 import os
 import requests
+import math
 
 import pandas as pd
 
@@ -12,10 +13,10 @@ def pause(seconds):
         pass
 
 class PortfolioMaster():
-    # Sets up vartiables for the class and creates 
+    # Sets up variables for the class and creates 
     # the files storing stock data if they are not present
     def __init__(self, folder_name):
-        self.folder_name = folder_name
+        self.folder_name = folder_name + '_t'
         self.hold_url = folder_name + '/Transactions on Hold.csv'
         self.post_url = folder_name + '/Posted Transactions.csv'
         self.overview_url = folder_name + '/Overview.csv'
@@ -72,7 +73,7 @@ class PortfolioMaster():
         index_removeable = []
 
         for index in hold_df.index:
-            print(f'Row: {index}; Stock: {hold_df["Stock"][index]}; Minute Calls: {self.count_minute_calls()}')
+            print(f'Row: {index}; Stock: {hold_df["Stock"][index]}; Minute Calls: {index + 1 + self.count_minute_calls()}')
 
             if (self.count_total_daily_calls()) > 500:
                 print('Exceeded API Cap of 500 Calls per Day')
@@ -89,7 +90,6 @@ class PortfolioMaster():
 
             # Extract data from JSON with current stock information
             url_link = (r"https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol={}&interval=15min&apikey={}".format(stock, self.api_key))
-            print(url_link)
             url_data = requests.get(url_link)
             json_data = url_data.json()
 
@@ -117,18 +117,18 @@ class PortfolioMaster():
 
             # Calculate change in cash balance
             meta_df = pd.read_csv(self.meta_url, index_col='Item')
-            if (meta_df['Quantity']['Cash'] - price_per_share*quantity) >= 0:
-                self.add_remove_cash(-1*price_per_share*quantity)
+            if (meta_df['Quantity']['Cash'] - math.ceil(price_per_share*quantity*100)/100) >= 0:
+                self.add_remove_cash(-1*math.ceil(price_per_share*quantity*100)/100)
             else:
                 print('Not Enough Money to Invest')
-                pass
+                break
 
             # Summarize Data
             hold_extract['Time Posted'] += [stock_time]
             hold_extract['Stock'] += [stock]
             hold_extract['Quantity Moved'] += [quantity]
             hold_extract['Price Per Share'] += [price_per_share]
-            hold_extract['Amount Moved'] += [(price_per_share*10000)*quantity/10000]
+            hold_extract['Amount Moved'] += [math.ceil(price_per_share*quantity*100)/100]
             hold_extract['Last Updated'] += [last_updated]
 
             # Add Index
@@ -159,8 +159,6 @@ class PortfolioMaster():
             if (self.count_total_daily_calls()) >= 500:
                 print('Exceeded API Cap of 500 Calls per Day')
                 break
-            
-            print(self.count_minute_calls())
 
             if (index+1 + self.count_minute_calls()) % 5 == 0:
                 print('Program Paused')
@@ -202,7 +200,7 @@ class PortfolioMaster():
             
             current_worth = (price_per_share)*df_stock['Quantity Moved'].astype(float).sum()
             profit_loss = (price_per_share)*df_stock['Quantity Moved'].astype(float).sum() - df_stock['Amount Moved'].astype(float).sum()
-            profit_loss = float(('{:.2f}').format(profit_loss))*-1
+            profit_loss = float(('{:.2f}').format(profit_loss))
 
             # Read overview csv
             tmp_overview_df = pd.read_csv(self.overview_url)
@@ -222,12 +220,12 @@ class PortfolioMaster():
 
             # Summarize Data
             output['Stock'] += [stock]
-            output['Quantity'] += [quantity]
+            output['Quantity'] += [int(quantity)]
             output['Amount Invested'] += [amount_invested]
             output['Invested per Share'] += [invested_per_share]
             output['Price per Share'] += [price_per_share]
             output['Current Worth'] += [current_worth]
-            output['Current Profit/Loss'] += [profit_loss]
+            output['Current Profit/Loss'] += [round(profit_loss,2)]
             output['Last Updated'] += [str(count) + '_' + str(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))]
         
         # Apply extracted data onto Overview csv
@@ -250,7 +248,12 @@ class PortfolioMaster():
     def overview_table(self):
         overview_df = pd.read_csv(self.overview_url, index_col='Stock')
         overview_df['Last Updated'] = overview_df['Last Updated'].apply(lambda x: str(x).removeprefix(str(x)[:str(x).find('_')+1]))
-        print(overview_df)
+        return overview_df
+
+    def money_count(self):
+        meta_df = pd.read_csv(self.meta_url, index_col="Item")
+        count = pd.to_numeric(meta_df.loc['Cash', 'Quantity'])
+        return count
 
     def count_total_daily_calls(self):
         current_date = datetime.now().date()
@@ -263,7 +266,6 @@ class PortfolioMaster():
             for index in overview_df.index:
                 if current_date.strftime('%Y-%m-%d') == datetime.strptime(overview_df.loc[index, 'Posting Dates'], '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d'):
                     count += pd.to_numeric(overview_df.loc[index, 'Post_#'])
-
         post_df = pd.read_csv(self.post_url)
         post_df = pd.to_datetime(post_df['Last Updated']).dt.date
 
@@ -306,7 +308,7 @@ class PortfolioMaster():
         meta_df.to_csv(self.meta_url, index=False, mode='w')
 
 if __name__ == '__main__':
-    portfolio = PortfolioMaster('Stock Market')
+    portfolio = PortfolioMaster('My Portfolio')
     
     portfolio.add_remove_cash(5000)
 
@@ -322,4 +324,4 @@ if __name__ == '__main__':
 
     portfolio.load_orders()
     portfolio.update()
-    portfolio.overview_table()
+    print(portfolio.overview_table())

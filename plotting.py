@@ -33,5 +33,3 @@ def graph():
     ax4.axes.get_yaxis().set_visible(False)
     ax4.bar_label(bar_chart, fmt = '$%0.2f')
     plt.show()
-
-graph()
