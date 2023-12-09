@@ -15,19 +15,19 @@ def pause(seconds):
 class PortfolioMaster():
     # Sets up variables for the class and creates 
     # the files storing stock data if they are not present
-    def __init__(self, folder_name):
-        self.folder_name = folder_name + '_t'
-        self.hold_url = folder_name + '/Transactions on Hold.csv'
-        self.post_url = folder_name + '/Posted Transactions.csv'
-        self.overview_url = folder_name + '/Overview.csv'
-        self.meta_url = folder_name + '/Meta.csv'
+    def __init__(self, folder_name, API_KEY):
+        self.folder_name = folder_name
+        self.hold_url = self.folder_name + '/Transactions on Hold.csv'
+        self.post_url = self.folder_name + '/Posted Transactions.csv'
+        self.overview_url = self.folder_name + '/Overview.csv'
+        self.meta_url = self.folder_name + '/Meta.csv'
 
-        self.api_key = os.environ.get('Stock_API_key')
+        self.api_key = os.environ.get(API_KEY)
 
-        if folder_name not in os.listdir():
-            os.makedirs(folder_name)
+        if self.folder_name not in os.listdir():
+            os.makedirs(self.folder_name)
 
-        if 'Overview.csv' not in os.listdir(folder_name):
+        if 'Overview.csv' not in os.listdir(self.folder_name):
             overview_df = pd.DataFrame({'Stock': [], 'Quantity': [], 
                                         'Amount Invested': [], 
                                         'Invested per Share': [], 
@@ -35,17 +35,17 @@ class PortfolioMaster():
                                         'Current Profit/Loss': [], 'Last Updated': []})
             overview_df.to_csv(self.overview_url, index=False, mode='w+')
 
-        if 'Transactions on Hold.csv' not in os.listdir(folder_name):
+        if 'Transactions on Hold.csv' not in os.listdir(self.folder_name):
             hold_df = pd.DataFrame({'Date': [], 'Stock': [], 'Quantity Moved': []})
             hold_df.to_csv(self.hold_url, index=False, mode='w+')
         
-        if 'Posted Transactions.csv' not in os.listdir(folder_name):
+        if 'Posted Transactions.csv' not in os.listdir(self.folder_name):
             post_df = pd.DataFrame({'Time Posted': [], 'Stock': [],
                                     'Quantity Moved': [], 'Price Per Share': [],
                                     'Amount Moved': [], 'Last Updated': []})
             post_df.to_csv(self.post_url, index=False, mode='w+')
 
-        if 'Meta.csv' not in os.listdir(folder_name):
+        if 'Meta.csv' not in os.listdir(self.folder_name):
             meta_df = pd.DataFrame({'Item': ['Cash'], 
                                     'Quantity': [0]})
             meta_df.to_csv(self.meta_url, index=False, mode='w+')
@@ -55,6 +55,22 @@ class PortfolioMaster():
         # before load_orders() is called
 
         hold_df = pd.read_csv(self.hold_url)
+        post_df = pd.read_csv(self.post_url)
+
+        try:
+            hold_counts = hold_df.groupby('Stock').get_group(symbol)['Quantity Moved'].astype(int).sum()
+        except:
+            hold_counts = 0
+
+        try:
+            post_counts = post_df.groupby('Stock').get_group(symbol)['Quantity Moved'].astype(int).sum()
+        except:
+            post_counts = 0
+
+        print(hold_counts, post_counts)
+        if (hold_counts+post_counts+quantity < 0 or quantity==0):
+            return
+
         add_on_df = pd.DataFrame({'Date': [datetime.now().strftime('%Y-%m-%d %H:%M:%S')], 
                                     'Stock': [symbol],'Quantity Moved':[quantity]})
         hold_df = pd.concat([hold_df, add_on_df], axis=0, ignore_index=True)
@@ -73,10 +89,8 @@ class PortfolioMaster():
         index_removeable = []
 
         for index in hold_df.index:
-            print(f'Row: {index}; Stock: {hold_df["Stock"][index]}; Minute Calls: {index + 1 + self.count_minute_calls()}')
-
-            if (self.count_total_daily_calls()) > 500:
-                print('Exceeded API Cap of 500 Calls per Day')
+            if (self.count_total_daily_calls()) > 25:
+                print('Exceeded API Cap of 25 Calls per Day')
                 break
             if (index + 1 + self.count_minute_calls()) % 5 == 0:
                 print('Program Paused')
@@ -94,10 +108,12 @@ class PortfolioMaster():
             json_data = url_data.json()
 
             # Parsing through date data from JSON and associated price per share data
-            dates = pd.DataFrame(json_data['Time Series (15min)']).transpose().reset_index()
-            dates = pd.to_datetime(dates['index']).dt.date
-            dates = pd.DataFrame(json_data['Time Series (15min)'])
-            dates = pd.to_datetime(dates.transpose().reset_index()['index'])
+            try:
+                dates = pd.DataFrame(json_data['Time Series (15min)']).transpose().reset_index()
+                dates = pd.to_datetime(dates['index']).dt.date
+            except:
+                print(json_data)
+                break
 
             if current.date() not in dates:
                 stock_time = (datetime.strptime(json_data['Meta Data']['3. Last Refreshed'], '%Y-%m-%d %H:%M:%S').replace(hour=16, minute=0, second=0, microsecond=0)).strftime('%Y-%m-%d %H:%M:%S')
@@ -156,11 +172,11 @@ class PortfolioMaster():
                     'Current Profit/Loss': [], 'Last Updated': []}
 
         for index, group in enumerate(post_dfgb.groups):
-            if (self.count_total_daily_calls()) >= 500:
-                print('Exceeded API Cap of 500 Calls per Day')
+            if (self.count_total_daily_calls()) >= 25:
+                print('Exceeded API Cap of 25 Calls per Day')
                 break
 
-            if (index+1 + self.count_minute_calls()) % 5 == 0:
+            if (index + 1 + self.count_minute_calls()) % 5 == 0:
                 print('Program Paused')
                 pause(65)
                 print('Program Continued')
@@ -170,6 +186,8 @@ class PortfolioMaster():
             # Extract from Post Transactions CSV
             stock = group
             quantity = df_stock['Quantity Moved'].astype(float).sum()
+            if quantity <= 0:
+                continue
             amount_invested = df_stock['Amount Moved'].astype(float).sum()
             invested_per_share = (df_stock['Amount Moved'].astype(float).sum() 
                                     / df_stock['Quantity Moved'].astype(float).sum())
@@ -181,8 +199,12 @@ class PortfolioMaster():
             
             current = datetime.now() - timedelta(days=1)
 
-            dates = pd.DataFrame(json_data['Time Series (15min)']).transpose().reset_index()
-            dates = pd.to_datetime(dates['index']).dt.date
+            try:
+                dates = pd.DataFrame(json_data['Time Series (15min)']).transpose().reset_index()
+                dates = pd.to_datetime(dates['index']).dt.date
+            except:
+                print(json_data)
+                break
 
             # Parsing through date data from JSON and associated price per share data
             if current.date() not in dates:
@@ -233,12 +255,18 @@ class PortfolioMaster():
         
         if overview_df.size > 0:
             overview_df.set_index('Stock', inplace=True)
-            for stock in output['Stock']:
-                add_on = pd.DataFrame(output).set_index('Stock')
-                if stock in overview_df.index:
-                    overview_df.replace(overview_df.loc[stock], add_on.loc[stock], inplace=True)
-                elif stock not in overview_df.index:
-                    overview_df = pd.concat([overview_df, add_on], axis=0, ignore_index=False)
+            add_on = pd.DataFrame(output).set_index('Stock')
+            overview_df.update(add_on)
+            
+            for stock in post_dfgb.groups:
+                if stock not in overview_df.index and stock in output['Stock']:
+                    overview_df.loc[stock] = add_on.loc[stock]
+                
+                quantity = post_df.groupby('Stock').get_group(stock)['Quantity Moved'].astype(float).sum()
+                print(quantity)
+                if stock in overview_df.index and quantity <= 0:
+                    overview_df.drop(stock, inplace=True)
+
             overview_df.reset_index(col_level=0, inplace=True)
         else:
             overview_df = pd.DataFrame(output)
@@ -252,7 +280,7 @@ class PortfolioMaster():
 
     def money_count(self):
         meta_df = pd.read_csv(self.meta_url, index_col="Item")
-        count = pd.to_numeric(meta_df.loc['Cash', 'Quantity'])
+        count = round(pd.to_numeric(meta_df.loc['Cash', 'Quantity']),2)
         return count
 
     def count_total_daily_calls(self):
@@ -301,27 +329,8 @@ class PortfolioMaster():
     def add_remove_cash(self, change):
         meta_df = pd.read_csv(self.meta_url, index_col='Item')
 
-        cash = float(meta_df['Quantity']['Cash']) + change
+        cash = meta_df['Quantity']['Cash'] + change
         meta_df.loc['Cash', 'Quantity'] = cash
         meta_df.reset_index(col_level=0, inplace=True)
 
         meta_df.to_csv(self.meta_url, index=False, mode='w')
-
-if __name__ == '__main__':
-    portfolio = PortfolioMaster('My Portfolio')
-    
-    portfolio.add_remove_cash(5000)
-
-    portfolio.call_order('IBM', 3)
-    portfolio.call_order('AAPL', 5)
-    portfolio.call_order('GOOGL', 2)
-    portfolio.call_order('IBM', 3)
-    portfolio.call_order('AAPL', 5)
-    portfolio.call_order('GOOGL', 2)
-    portfolio.call_order('IBM', 3)
-    portfolio.call_order('AAPL', 5)
-    portfolio.call_order('GOOGL', 2)
-
-    portfolio.load_orders()
-    portfolio.update()
-    print(portfolio.overview_table())

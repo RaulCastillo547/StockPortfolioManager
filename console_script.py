@@ -1,59 +1,95 @@
 from PortfolioMaster import PortfolioMaster as pm
+from Plotting import graph
+
+from datetime import date
+
 import os
 
-print('Welcome to the Portfolio Master!\n' + 'For more information, please see the attached ReadMe file.')
+print("Welcome to Portfolio Manager (v.1.0.0)!")
+print("For more information, please see the ReadMe file on GitHub.\n")
 
-select_state = input('Type \'LOAD\' to load an existing portfolio or \'NEW\' to create a new portfolio.')
+# Open / Create a portfolio
+select_state = input("Type \'L\' to load an exiting portfolio or \'N\' to create a new portfolio: ")
+while (select_state != 'L' and select_state != 'N'):
+    select_state = input("Type \'L\' or \'N\': ")
+    pass
 
-while (select_state != 'LOAD') and (select_state != 'NEW'):
-    print()
-    select_state = input('Please type \'LOAD\' or \'NEW\'')    
+options = []
+for entry in os.listdir():
+    if os.path.isdir(entry) and entry not in ['.git', '.venv', '__pycache__', '.vscode']:
+        options.append(entry)
 
-portfolio_link = input('\nType the Porfolio\'s URL link or name')
+portfolio_name = str()
+if len(options) == 0 and select_state == 'L':
+    print("There is no other portfolio. Create a new portfolio.")
+    select_state = 'N'
 
-while True:
-    if (select_state == 'LOAD') and (os.DirEntry.is_dir(portfolio_link)):
-        portfolio = pm(portfolio_link)
-        escape = False
-        break
+select_state = select_state.upper()
+if select_state == 'L':
+    # File Options
+    while portfolio_name not in options:
+        print(f"Select from the following: {','.join(options)}")
+        portfolio_name = input()
+elif select_state == 'N':
+    portfolio_name = input("Enter a porfolio name: ")
+    while portfolio_name in options:
+        portfolio_name = input("Name has been taken; enter another name: ")
 
-    if (select_state == 'LOAD' and not(os.DirEntry.is_dir(portfolio_link))):
-        portfolio_link = input('Retype Porfolio URL')
+print()
+print("Access Granted!\n")
 
-    if select_state == 'NEW':
-        portfolio = pm(portfolio_link)
-        escape = False
-        break
+# Access Main Menu
+# Options: Add Funds, Call/Sell, Update, Read, Graph, & Quit
+portfolio = pm(portfolio_name, 'Stock_API_key')
 
-print('Please select from the following options:')
-select_state = input('''-FUNDS\n-CALL\n-UPDATE\n-TABLE\n-EXIT\n''')
+print("Welcome to the Main Menu!")
+print("Select from the following options:\n- Add/Remove Cash (\'A\')\n- Make a Call/Sell (\'P\')\n- Update Portfolio (\'U\')\n- Display Portfolio (\'D\')\n- Info on API Limits (\'I\')\n- Quit (\'Q\')\n")
 
-while True:
-    if (select_state == 'FUNDS'):
-        cash_change = float(input('Type a postive number for a deposit or a negative number for a withdrawal'))
-        portfolio.add_remove_cash(cash_change)
-        select_state = input('Pick another option')
-    
-    if (select_state == 'CALL'):
-        stock_name = input('Enter the stock\'s ticker symbol')
-        quantity = input('Enter the quantity you wish to purchase')
-        portfolio.call_order(stock_name,)
-        select_state = input('Pick another option')
-    
-    if (select_state == 'UPDATE'):
+while (select_state != 'Q'):
+    select_state = input("Enter a choice: ")
+    select_state = select_state.upper()
+
+    if (select_state == 'A'):
+        # Adds/Subtract cash
+        print(f"Current Funds: {portfolio.money_count()}")
+        funds = float(input("Enter Amount to Add (or Subtract): "))
+        portfolio.add_remove_cash(funds)
+
+    elif (select_state == 'P'):
+        # Buy/Sell shares
+        try:
+            stock_name = input('Enter ticker symbol: ')
+            quantity = float(input('Enter amount to buy or sell: '))
+        except:
+            print("Improper Values")
+        else:
+            portfolio.call_order(stock_name, quantity)
+            portfolio.load_orders()
+            portfolio.update()
+
+    elif (select_state == 'U'):
+        # Updates overview table 
         portfolio.load_orders()
         portfolio.update()
-        select_state = input('Pick another option')
-    
-    if (select_state == 'TABLE'):
-        portfolio.table()
-        select_state = input('Pick another option')
-    
-    if (select_state == 'EXIT'):
-        break
-    
-    if select_state not in ['FUNDS', 'CALL', 'UPDATE', 'TABLE', 'EXIT']:
-        select_state = input('Try Again')
 
+    elif (select_state == 'D'):
+        # Display information about a portfolio's makeup with a table and graph
+        table = portfolio.overview_table()
+        print(table)
+        input('Press enter to generate graph')
+        graph(portfolio)
 
-print('\nThank you for using the program!')
+    elif (select_state == 'I'):
+        # Shows info on API Limits
+        print(f"Today's Date: {date.today()}")
+        print(f"- Minute Calls: {portfolio.count_minute_calls()} / 5")
+        print(f"- Calls Today: {portfolio.count_total_daily_calls()} / 25")
+
+    elif (select_state == 'Q'):
+        print("Thank you for using our Portfolio Manager!")
+        print("Have a great day!")
+
+    else:
+        print("Invalid option")
+
+    print()

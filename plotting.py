@@ -1,10 +1,19 @@
 from matplotlib import pyplot as plt
+import matplotlib.gridspec as gridspec
 import pandas as pd
 
-def graph():
-    overview_df = pd.read_csv('Stock Market\Overview.csv', index_col='Stock')
-    fig, (ax1, ax2, ax3) = plt.subplots(nrows=1, ncols=3, figsize=(10, 10))
-    
+from PortfolioMaster import PortfolioMaster
+
+def graph(portfolio):
+    overview_df = portfolio.overview_table()
+    plt.style.use('seaborn-v0_8')
+    fig = plt.figure(tight_layout=True)
+    gs = gridspec.GridSpec(2,3)
+    ax1 = fig.add_subplot(gs[0, 0])
+    ax2 = fig.add_subplot(gs[0, 1])
+    ax3 = fig.add_subplot(gs[0, 2])
+    ax4 = fig.add_subplot(gs[1, :])
+
     # 1 Quantity
     def quantity_format(pct, allvals):
         value = allvals*(pct/100)
@@ -26,10 +35,12 @@ def graph():
     ax3.set_title('Current Value of Stocks')
 
     # 4 Revenue Accross Stocks
-    ax4 = fig.add_subplot(4, 1, (4, 5))
-    bar_chart = ax4.bar(overview_df.index, overview_df['Current Profit/Loss'])
+    
+    colors = ['g' if value > 0 else 'r' for value in overview_df['Current Profit/Loss']]
+    bar_chart = ax4.bar(overview_df.index, overview_df['Current Profit/Loss'], color = colors)
     
     ax4.set_title('Money Made Across Stocks')
     ax4.axes.get_yaxis().set_visible(False)
     ax4.bar_label(bar_chart, fmt = '$%0.2f')
+
     plt.show()
