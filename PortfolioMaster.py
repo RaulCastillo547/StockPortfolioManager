@@ -47,7 +47,7 @@ class PortfolioMaster():
 
         if 'Meta.csv' not in os.listdir(self.folder_name):
             meta_df = pd.DataFrame({'Item': ['Cash'], 
-                                    'Quantity': [0]})
+                                    'Quantity': [0.00]})
             meta_df.to_csv(self.meta_url, index=False, mode='w+')
 
     def call_order(self, symbol, quantity):
@@ -66,15 +66,29 @@ class PortfolioMaster():
             post_counts = post_df.groupby('Stock').get_group(symbol)['Quantity Moved'].astype(int).sum()
         except:
             post_counts = 0
-
-        print(hold_counts, post_counts)
         if (hold_counts+post_counts+quantity < 0 or quantity==0):
-            return
+            return 1
 
         add_on_df = pd.DataFrame({'Date': [datetime.now().strftime('%Y-%m-%d %H:%M:%S')], 
-                                    'Stock': [symbol],'Quantity Moved':[quantity]})
-        hold_df = pd.concat([hold_df, add_on_df], axis=0, ignore_index=True)
+                                    'Stock': [symbol],'Quantity Moved':[quantity]}).set_index('Stock')
+        
+        hold_df.set_index('Stock', inplace=True)
+
+        if (symbol in hold_df.index):
+            add_on_df.loc[symbol, 'Quantity Moved'] += hold_counts
+            
+            if (add_on_df.loc[symbol, 'Quantity Moved'] == 0):
+                hold_df.drop(symbol, inplace=True)
+            else:
+                hold_df.update(add_on_df, inplace=True)
+        else:
+            hold_df.loc[symbol] = add_on_df.loc[symbol]
+        
+        hold_df.reset_index(inplace=True)
+
         hold_df.to_csv(self.hold_url, index=False,  mode='w')
+
+        return 0
 
     def load_orders(self):
         # Brings the transactions listed on the Hold Transactions csv
@@ -153,7 +167,10 @@ class PortfolioMaster():
         # Add to Posted Transactions
         post_df = pd.read_csv(self.post_url)
         addon_df = pd.DataFrame(hold_extract)
-        post_df = pd.concat([post_df, addon_df], axis=0, ignore_index=True)
+        if post_df.size > 0:
+            post_df = pd.concat([post_df, addon_df], axis=0, ignore_index=True)
+        else:
+            post_df = addon_df
         post_df.to_csv(self.post_url, index=False, mode='w')
         
         # Remove Transactions That Were Posted
@@ -272,6 +289,7 @@ class PortfolioMaster():
             overview_df = pd.DataFrame(output)
 
         overview_df.to_csv(self.overview_url, index=False, mode='w')
+        return 0
 
     def overview_table(self):
         overview_df = pd.read_csv(self.overview_url, index_col='Stock')
