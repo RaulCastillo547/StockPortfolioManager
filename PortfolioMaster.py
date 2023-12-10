@@ -263,7 +263,7 @@ class PortfolioMaster():
                     overview_df.loc[stock] = add_on.loc[stock]
                 
                 quantity = post_df.groupby('Stock').get_group(stock)['Quantity Moved'].astype(float).sum()
-                print(quantity)
+                
                 if stock in overview_df.index and quantity <= 0:
                     overview_df.drop(stock, inplace=True)
 
