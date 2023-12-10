@@ -9,10 +9,9 @@ print("Welcome to Portfolio Manager (v.1.0.0)!")
 print("For more information, please see the ReadMe file on GitHub.\n")
 
 # Open / Create a portfolio
-select_state = input("Type \'L\' to load an exiting portfolio or \'N\' to create a new portfolio: ")
+select_state = input("Type \'L\' to load an exiting portfolio or \'N\' to create a new portfolio: ").upper()
 while (select_state != 'L' and select_state != 'N'):
-    select_state = input("Type \'L\' or \'N\': ")
-    pass
+    select_state = input("Type \'L\' or \'N\': ").upper()
 
 options = []
 for entry in os.listdir():
@@ -28,7 +27,7 @@ select_state = select_state.upper()
 if select_state == 'L':
     # File Options
     while portfolio_name not in options:
-        print(f"Select from the following: {','.join(options)}")
+        print(f"Select from the following: {', '.join(options)}")
         portfolio_name = input()
 elif select_state == 'N':
     portfolio_name = input("Enter a porfolio name: ")
@@ -60,10 +59,11 @@ while (select_state != 'Q'):
         try:
             stock_name = input('Enter ticker symbol: ')
             quantity = float(input('Enter amount to buy or sell: '))
+            if (portfolio.call_order(stock_name, quantity) == 1):
+                raise ValueError
         except:
             print("Improper Values")
         else:
-            portfolio.call_order(stock_name, quantity)
             portfolio.load_orders()
             portfolio.update()
 
