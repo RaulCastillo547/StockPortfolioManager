@@ -6,6 +6,10 @@ from PortfolioMaster import PortfolioMaster
 
 def graph(portfolio):
     overview_df = portfolio.overview_table()
+    
+    if overview_df == 1:
+        return 1
+
     plt.style.use('seaborn-v0_8')
     fig = plt.figure(tight_layout=True)
     gs = gridspec.GridSpec(2,3)
