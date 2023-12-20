@@ -62,6 +62,40 @@ class PortfolioMaster():
         con.commit()
         con.close()
 
+    # Makes Calls
+    def make_order(self, stock_ticker, quantity):
+        # Create Cursor
+        con = sqlite3.connect(self.database_name + ".db")
+        con.row_factory = sqlite3.Row
+        cur = con.cursor()
+
+        # Gather amount of shares being moved in the orders and receipts tables
+        orders_quantities = dict(cur.execute("SELECT stock_ticker, SUM(quantity) AS total_shares FROM Orders GROUP BY stock_ticker").fetchall())
+        receipts_quantities = dict(cur.execute("SELECT stock_ticker, SUM(quantity) AS total_shares FROM Receipts GROUP BY stock_ticker").fetchall())
+
+        if (orders_quantities.setdefault(stock_ticker, 0) + receipts_quantities.setdefault(stock_ticker, 0) + quantity) >= 0:
+            # Proceed with order
+            fill = {'time': dt.now().isoformat(), 'stock': stock_ticker, 'quantity': quantity}
+            cur.execute("INSERT INTO Orders VALUES (:time, :stock, :quantity)", fill)
+            
+            # Close Cursor
+            con.commit()
+            con.close()
+
+            return 0
+        else:
+            # Do not proceed with order
+
+            # Close Cursor
+            con.commit()
+            con.close()
+
+            return 1
+        
+    def update(self):
+        # Pos
+        
+        pass
 
     def increment_minute_daily_calls(self):
         # Retrieve current minute and daily call amounts and add them by one
@@ -168,11 +202,4 @@ class PortfolioMaster():
         return table
 
 if __name__ == '__main__':
-    pm = PortfolioMaster('practice', 'Stock_API_key')
-    pm.increment_minute_daily_calls()
-    print(f"Minute Calls: {pm.check_minute_calls()} Daily Calls: {pm.check_daily_calls()}")
-    table = pm.overview_table()
-    if table == 1:
-        print("Empty Portfolio")
-    else:
-        print(table)
+    pm = PortfolioMaster('practice', 'Stock_API_Key')
