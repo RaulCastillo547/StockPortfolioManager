@@ -2,12 +2,13 @@ import sqlite3
 from datetime import datetime as dt
 from datetime import timedelta
 import os
+import math
 
 import pandas as pd
 import requests
 
 class PortfolioMaster():
-    # Creates database with tables if not pre-existing;
+    # Creates database with tables if the database or tables do not already exist;
     # Also collects API key from environmental variable
     def __init__(self, database_name, API_KEY):
         # Collect API key & database name
@@ -64,7 +65,7 @@ class PortfolioMaster():
 
     # Makes Calls
     def make_order(self, stock_ticker, quantity):
-        # Create Cursor
+        # Create cursor
         con = sqlite3.connect(self.database_name + ".db")
         con.row_factory = sqlite3.Row
         cur = con.cursor()
@@ -78,24 +79,117 @@ class PortfolioMaster():
             fill = {'time': dt.now().isoformat(), 'stock': stock_ticker, 'quantity': quantity}
             cur.execute("INSERT INTO Orders VALUES (:time, :stock, :quantity)", fill)
             
-            # Close Cursor
+            # Close cursor
             con.commit()
             con.close()
 
             return 0
         else:
-            # Do not proceed with order
-
-            # Close Cursor
+            # Do not proceed with order & close cursor
             con.commit()
             con.close()
 
             return 1
         
     def update(self):
-        # Pos
+        def pause(seconds):
+            current_dt = dt.now()
+            while ((dt.now() - current_dt) <= timedelta(seconds=seconds)):
+                pass
         
-        pass
+        def retrieve_price(time, stock_ticker):
+            check_time = time
+            while True:
+                # Check minute & daily calls: 5 calls per minute; I do not know of any daily cap, but keep just in case
+                if (self.check_daily_calls() >= 1000):
+                    print("Daily call limit reach; cannot be continued")
+                    return "Error"
+                
+                if (self.check_minute_calls() >= 5):
+                    print("Minute call limit reach; please wait 65 seconds")
+                    pause(65)
+            
+                # Retrieve Data
+                url_data = requests.get(f"https://api.polygon.io/v1/open-close/{stock_ticker}/{check_time.date().isoformat()}?adjusted=true&apiKey={self.api_key}")
+                data = url_data.json()
+                self.increment_minute_daily_calls()
+
+                if (data['status'] == 'OK'):
+                    return data['close']
+                elif ((time - check_time) >= timedelta(days=5)):
+                    return "Error"
+                check_time -= timedelta(days=1)
+            
+        # Create cursor
+        con = sqlite3.connect(self.database_name + '.db')
+        con.row_factory = sqlite3.Row
+        cur = con.cursor()
+
+        # Post orders onto Receipts table
+        orders_table = pd.read_sql("""
+                    SELECT stock_ticker, SUM(quantity) AS shares_moved, MIN(time) AS oldest_transaction
+                    FROM Orders
+                    GROUP BY stock_ticker
+                    ORDER BY datetime(oldest_transaction) ASC
+                    """, con)
+        orders_table.set_index('stock_ticker', inplace=True)
+        orders_table['oldest_transaction'] = orders_table['oldest_transaction'].map(dt.fromisoformat)
+
+        stocks_received = {'stocks': [], 'price_per_share': []}
+        stock_tickers = orders_table.index
+        for ticker in stock_tickers:
+            # Gather information for time_posted, stock_ticker, quantity, price_per_share, & total_amount
+            time_posted = dt.now() - timedelta(days=1)
+            quantity = int(orders_table.loc[ticker, 'shares_moved'])
+            
+            if (quantity == 0):
+                cur.execute("DELETE FROM Orders WHERE stock_ticker = :stock_ticker", {'stock_ticker': ticker})
+                con.commit()
+                continue
+
+            price_per_share = retrieve_price(time_posted, ticker)
+            if (price_per_share == "Error"):
+                print(f'Could not retrieve data for {ticker} with {quantity} share(s); check if {ticker} is a proper stock ticker.')
+                continue
+            
+            stocks_received['stocks'].append(ticker)
+            stocks_received['price_per_share'].append(price_per_share)
+
+            total_amount = math.ceil(price_per_share*quantity*100)/100
+            if (self.add_remove_cash(-1*total_amount) == 1):
+                print(f'Not enough cash to buy {ticker} shares; add more funds.')
+                continue
+
+            # Apply information to Receipts & delete the Orders
+            fill = {'time_posted': time_posted.isoformat(), 'stock_ticker': ticker, 'quantity': quantity, 'price_per_share': math.ceil((total_amount/quantity)*100)/100, 'total_amount': total_amount}
+            cur.execute("INSERT INTO Receipts VALUES (:time_posted, :stock_ticker, :quantity, :price_per_share, :total_amount)", fill)
+            cur.execute("DELETE FROM Orders WHERE stock_ticker = :stock_ticker", {'stock_ticker': ticker})
+            con.commit()
+
+        print(stocks_received)
+
+        # Summarize Receipts onto orders
+
+        # Close cursor
+        con.commit()
+        con.close()
+
+    def add_remove_cash(self, amount):
+        # Create cursor
+        con = sqlite3.connect(self.database_name + ".db")
+        cur = con.cursor()
+
+        # Add into change
+        new_amount = self.check_cash() + math.ceil(amount*100)/100
+        if new_amount < 0:
+            return 1
+        cur.execute("UPDATE Meta SET cash = :new_amount", {"new_amount": new_amount})
+
+        # Close cursor
+        con.commit()
+        con.close()
+        
+        return 0
 
     def increment_minute_daily_calls(self):
         # Retrieve current minute and daily call amounts and add them by one
