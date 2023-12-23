@@ -93,22 +93,28 @@ class PortfolioMaster():
         
     def update(self):
         def pause(seconds):
-            current_dt = dt.now()
-            while ((dt.now() - current_dt) <= timedelta(seconds=seconds)):
+            start = dt.now()
+            while ((dt.now() - start) <= timedelta(seconds=seconds)):
                 pass
         
         def retrieve_price(time, stock_ticker):
             check_time = time
             while True:
                 # Check minute & daily calls: 5 calls per minute; I do not know of any daily cap, but keep just in case
+                '''
                 if (self.check_daily_calls() >= 1000):
                     print("Daily call limit reach; cannot be continued")
                     return "Error"
-                
+                '''
+
                 if (self.check_minute_calls() >= 5):
                     print("Minute call limit reach; please wait 65 seconds")
                     pause(65)
-            
+
+                # If check_time is a weekend, subtract the datetime back to the most recent Friday
+                if (5 <= check_time.weekday()):
+                    check_time -= timedelta(days=(check_time.weekday() - 4))
+                
                 # Retrieve Data
                 url_data = requests.get(f"https://api.polygon.io/v1/open-close/{stock_ticker}/{check_time.date().isoformat()}?adjusted=true&apiKey={self.api_key}")
                 data = url_data.json()
@@ -118,6 +124,9 @@ class PortfolioMaster():
                     return data['close']
                 elif ((time - check_time) >= timedelta(days=5)):
                     return "Error"
+                
+                # If check_time does not have an associated share_price, it could be because of a holiday, so increment it back with the assumption that
+                # Wallstreet does not have holidays that last longer than 5 days
                 check_time -= timedelta(days=1)
             
         # Create cursor
@@ -135,9 +144,8 @@ class PortfolioMaster():
         orders_table.set_index('stock_ticker', inplace=True)
         orders_table['oldest_transaction'] = orders_table['oldest_transaction'].map(dt.fromisoformat)
 
-        stocks_received = {'stocks': [], 'price_per_share': []}
-        stock_tickers = orders_table.index
-        for ticker in stock_tickers:
+        stocks_received = {}
+        for ticker in orders_table.index:
             # Gather information for time_posted, stock_ticker, quantity, price_per_share, & total_amount
             time_posted = dt.now() - timedelta(days=1)
             quantity = int(orders_table.loc[ticker, 'shares_moved'])
@@ -152,8 +160,8 @@ class PortfolioMaster():
                 print(f'Could not retrieve data for {ticker} with {quantity} share(s); check if {ticker} is a proper stock ticker.')
                 continue
             
-            stocks_received['stocks'].append(ticker)
-            stocks_received['price_per_share'].append(price_per_share)
+            # This stores relevant stock information to add into the overview table
+            stocks_received[ticker] = price_per_share
 
             total_amount = math.ceil(price_per_share*quantity*100)/100
             if (self.add_remove_cash(-1*total_amount) == 1):
@@ -161,14 +169,55 @@ class PortfolioMaster():
                 continue
 
             # Apply information to Receipts & delete the Orders
-            fill = {'time_posted': time_posted.isoformat(), 'stock_ticker': ticker, 'quantity': quantity, 'price_per_share': math.ceil((total_amount/quantity)*100)/100, 'total_amount': total_amount}
+            fill = {'time_posted': time_posted.isoformat(), 'stock_ticker': ticker, 'quantity': quantity, 'price_per_share': price_per_share, 'total_amount': total_amount}
             cur.execute("INSERT INTO Receipts VALUES (:time_posted, :stock_ticker, :quantity, :price_per_share, :total_amount)", fill)
             cur.execute("DELETE FROM Orders WHERE stock_ticker = :stock_ticker", {'stock_ticker': ticker})
             con.commit()
 
-        print(stocks_received)
-
         # Summarize Receipts onto orders
+        receipts_table = pd.read_sql("""
+                                    SELECT stock_ticker, SUM(quantity) AS shares_moved, SUM(total_amount) as total_invested, MIN(time_posted) AS oldest_transaction
+                                    FROM Receipts
+                                    GROUP BY stock_ticker
+                                    ORDER BY datetime(oldest_transaction)""", con)
+        receipts_table.set_index('stock_ticker', inplace=True)
+        receipts_table['oldest_transaction'] = receipts_table['oldest_transaction'].map(dt.fromisoformat)
+
+        overview_table = pd.read_sql("SELECT * FROM Overview", con)
+        overview_table.set_index('stock_ticker', inplace=True)
+        
+        for ticker in receipts_table.index:
+            # Gather information for stock_ticker, quantity, amount_invested, current_price, current_value, profit, & time_updated         
+            quantity = int(receipts_table.loc[ticker, 'shares_moved'])
+            if (quantity == 0):
+                if (ticker in overview_table.index):
+                    cur.execute("DELETE FROM Overview WHERE stock_ticker = :stock_ticker", {'stock_ticker': ticker})
+                    con.commit()
+                continue
+            
+            amount_invested = float(receipts_table.loc[ticker, 'total_invested'])
+            
+            if (ticker in stocks_received):
+                time_updated = receipts_table.loc[ticker, 'oldest_transaction']
+                current_price = stocks_received[ticker]
+            else:
+                time_updated = dt.now() - timedelta(days=1)
+                current_price = retrieve_price(time_updated, ticker)
+                if (current_price == 'Error'):
+                    current_price = -1
+                    print(f"Error emerged with current price per share retrieval; price has been set to -1")
+                    continue
+            
+            current_value = math.ceil(current_price*quantity*100)/100
+            profit = current_value - amount_invested
+
+            fill = {'stock_ticker': ticker, 'quantity': quantity, 'amount_invested': amount_invested, 'current_price': current_price, 'current_value': current_value, 'profit': profit, 'time_updated': time_updated.isoformat()}
+            if (ticker in overview_table.index):
+                cur.execute("UPDATE Overview SET quantity = :quantity, amount_invested = :amount_invested, current_price = :current_price, current_value = :current_value, profit = :profit, time_updated = :time_updated WHERE stock_ticker = :stock_ticker", fill)
+                con.commit()
+            else:
+                cur.execute("INSERT INTO Overview VALUES (:stock_ticker, :quantity, :amount_invested, :current_price, :current_value, :profit, :time_updated)", fill)
+                con.commit()
 
         # Close cursor
         con.commit()
@@ -180,7 +229,7 @@ class PortfolioMaster():
         cur = con.cursor()
 
         # Add into change
-        new_amount = self.check_cash() + math.ceil(amount*100)/100
+        new_amount = round(self.check_cash() + math.ceil(amount*100)/100, 2)
         if new_amount < 0:
             return 1
         cur.execute("UPDATE Meta SET cash = :new_amount", {"new_amount": new_amount})
@@ -296,4 +345,23 @@ class PortfolioMaster():
         return table
 
 if __name__ == '__main__':
+    # Test program
     pm = PortfolioMaster('practice', 'Stock_API_Key')
+
+    print(f"Start Cash: {pm.check_cash()}")
+    
+    
+    pm.make_order('AAPL', 2)
+    pm.make_order('IBM', 2)
+    pm.make_order('BA', 3)
+
+    pm.update()
+    
+
+    print(pm.overview_table())
+
+    print(f"End Cash: {pm.check_cash()}")
+
+    print(f"\nCurrent Time: {dt.now().isoformat()}")
+    print(f"Minute Calls: {pm.check_minute_calls()}")
+    print(f"Daily Calls: {pm.check_daily_calls()}")
