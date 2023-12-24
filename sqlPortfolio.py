@@ -1,9 +1,11 @@
-import sqlite3
 from datetime import datetime as dt
 from datetime import timedelta
-import os
 import math
+import os
+import sqlite3
 
+from matplotlib import pyplot as plt
+import matplotlib.gridspec as gridspec
 import pandas as pd
 import requests
 
@@ -223,6 +225,51 @@ class PortfolioMaster():
         con.commit()
         con.close()
 
+    def graph_portfolio(self):
+        overview_df = self.overview_table()
+    
+        if overview_df.size == 1:
+            return 1
+
+        plt.style.use('seaborn-v0_8')
+        fig = plt.figure(tight_layout=True)
+        gs = gridspec.GridSpec(2,3)
+        ax1 = fig.add_subplot(gs[0, 0])
+        ax2 = fig.add_subplot(gs[0, 1])
+        ax3 = fig.add_subplot(gs[0, 2])
+        ax4 = fig.add_subplot(gs[1, :])
+
+        # 1 Quantity
+        def quantity_format(pct, allvals):
+            value = allvals*(pct/100)
+            output = '{:n}'.format(value)
+            return output
+        ax1.pie(x=overview_df['quantity'], labels=overview_df.index, autopct=lambda pct: quantity_format(pct, overview_df['quantity'].sum()))
+        ax1.set_title('Quantity of Stocks Owned')
+
+        # 2 Invested
+        def currency_format(pct, allvals):
+            value = allvals*(pct/100)
+            output = '${:0.2f}'.format(value)
+            return output
+        ax2.pie(x=overview_df['amount_invested'], labels=overview_df.index, autopct=lambda pct: currency_format(pct, overview_df['amount_invested'].sum()))
+        ax2.set_title('Amount Invested Across Stocks')
+
+        # 3 Current Worth
+        ax3.pie(x=overview_df['current_value'], labels=overview_df.index, autopct=lambda pct: currency_format(pct, overview_df['current_value'].sum()))
+        ax3.set_title('Current Value of Stocks')
+
+        # 4 Revenue Accross Stocks
+        
+        colors = ['g' if value > 0 else 'r' for value in overview_df['profit']]
+        bar_chart = ax4.bar(overview_df.index, overview_df['profit'], color = colors)
+        
+        ax4.set_title('Money Made Across Stocks')
+        ax4.axes.get_yaxis().set_visible(False)
+        ax4.bar_label(bar_chart, fmt = '$%0.2f')
+
+        plt.show()
+
     def add_remove_cash(self, amount):
         # Create cursor
         con = sqlite3.connect(self.database_name + ".db")
@@ -350,10 +397,9 @@ if __name__ == '__main__':
 
     print(f"Start Cash: {pm.check_cash()}")
     
-    
-    pm.make_order('AAPL', 2)
-    pm.make_order('IBM', 2)
-    pm.make_order('BA', 3)
+    # pm.make_order('AAPL', 2)
+    # pm.make_order('IBM', 2)
+    # pm.make_order('BA', 3)
 
     pm.update()
     
@@ -362,6 +408,6 @@ if __name__ == '__main__':
 
     print(f"End Cash: {pm.check_cash()}")
 
-    print(f"\nCurrent Time: {dt.now().isoformat()}")
+    print(f"\nCurrent Time: {dt.now()}")
     print(f"Minute Calls: {pm.check_minute_calls()}")
     print(f"Daily Calls: {pm.check_daily_calls()}")
