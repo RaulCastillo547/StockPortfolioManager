@@ -2,11 +2,13 @@
 ### Introduction
 Welcome to my Stock Portfolio Manager's Github page! This program allows users to run their own stock portfolios via the command prompt.
 
-On the repository's main page, you will find 5 items:
+On the repository's main page, you will find 6 items:
 1) `Databases`: Folder storing sql databases holding portfolio information; one database in the folder, `practice.db`, has an example portfolio
-2) `ConsoleScript.py`: Contains code for the Stock Portfolio Manager menu
-3) `PortfolioMaster.py`: Defines the `PortfolioMaster` class, which allows the program to setup, edit, and visualize portfolios
-4) `requirements.txt`: Defines the python packages used when making the program
+2) `Additionl Notes.txt`: Contains more information about technical details
+3) `ConsoleScript.py`: Contains code for the Stock Portfolio Manager menu
+4) `PortfolioMaster.py`: Defines the `PortfolioMaster` class, which allows the program to setup, edit, and visualize portfolios
+5) `README.md`: The file with the introduction you are currently reading
+6) `requirements.txt`: Defines the python packages used when making the program
 
 (**Note:** Although this program tracks financial data and involves adding/removing "cash", no money is actually managed by the program.)
 
