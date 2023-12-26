@@ -123,9 +123,9 @@ class PortfolioMaster():
                 self.increment_minute_daily_calls()
 
                 if (data['status'] == 'OK'):
-                    return data['close']
+                    return check_time, data['close']
                 elif ((time - check_time) >= timedelta(days=5)):
-                    return "Error"
+                    return "Error", "Error"
                 
                 # If check_time does not have an associated share_price, it could be because of a holiday, so increment it back with the assumption that
                 # Wallstreet does not have holidays that last longer than 5 days
@@ -157,7 +157,7 @@ class PortfolioMaster():
                 con.commit()
                 continue
 
-            price_per_share = retrieve_price(time_posted, ticker)
+            time_posted, price_per_share = retrieve_price(time_posted, ticker)
             if (price_per_share == "Error"):
                 print(f'Could not retrieve data for {ticker} with {quantity} share(s); check if {ticker} is a proper stock ticker.')
                 continue
@@ -204,14 +204,14 @@ class PortfolioMaster():
                 current_price = stocks_received[ticker]
             else:
                 time_updated = dt.now() - timedelta(days=1)
-                current_price = retrieve_price(time_updated, ticker)
+                time_updated, current_price = retrieve_price(time_updated, ticker)
                 if (current_price == 'Error'):
                     current_price = -1
                     print(f"Error emerged with current price per share retrieval; price has been set to -1")
                     continue
             
             current_value = math.ceil(current_price*quantity*100)/100
-            profit = current_value - amount_invested
+            profit = math.floor((current_value - amount_invested)*100)/100
 
             fill = {'stock_ticker': ticker, 'quantity': quantity, 'amount_invested': amount_invested, 'current_price': current_price, 'current_value': current_value, 'profit': profit, 'time_updated': time_updated.isoformat()}
             if (ticker in overview_table.index):
@@ -228,7 +228,7 @@ class PortfolioMaster():
     def graph_portfolio(self):
         overview_df = self.overview_table()
     
-        if overview_df.size == 1:
+        if (overview_df.size == 0):
             return 1
 
         plt.style.use('seaborn-v0_8')
@@ -269,6 +269,7 @@ class PortfolioMaster():
         ax4.bar_label(bar_chart, fmt = '$%0.2f')
 
         plt.show()
+        return 0
 
     def add_remove_cash(self, amount):
         # Create cursor
@@ -278,6 +279,7 @@ class PortfolioMaster():
         # Add into change
         new_amount = round(self.check_cash() + math.ceil(amount*100)/100, 2)
         if new_amount < 0:
+            con.close()
             return 1
         cur.execute("UPDATE Meta SET cash = :new_amount", {"new_amount": new_amount})
 
@@ -381,9 +383,6 @@ class PortfolioMaster():
         # Close cursor
         con.commit()
         con.close()
-
-        if table.size == 0:
-            return 1
         
         # Format table's index & date time elements
         table.set_index('stock_ticker', inplace=True)
